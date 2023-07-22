@@ -84,7 +84,7 @@ class CtrlSigs extends Bundle
           rs2_type, frs3_en, imm_sel, uses_ldq, uses_stq, is_amo,
           is_fence, is_fencei, mem_cmd, wakeup_delay, bypassable,
           is_br, is_sys_pc2epc, inst_unique, flush_on_commit, csr_cmd)
-      sigs zip decoder map {case(s,d) => s := d}
+      sigs zip decoder map {case(s,d) => s := d}                                                    // sigs are assigned to decode results.
       rocc := false.B
       this
   }
@@ -474,7 +474,7 @@ class DecodeUnit(implicit p: Parameters) extends BoomModule
   val uop = Wire(new MicroOp())
   uop := io.enq.uop
 
-  var decode_table = XDecode.table
+  var decode_table = XDecode.table                                                                                // decode table, including int, float, RoCC, X64Decode
   if (usingFPU) decode_table ++= FDecode.table
   if (usingFPU && usingFDivSqrt) decode_table ++= FDivSqrtDecode.table
   if (usingRoCC) decode_table ++= RoCCDecode.table
@@ -482,7 +482,7 @@ class DecodeUnit(implicit p: Parameters) extends BoomModule
 
   val inst = uop.inst
 
-  val cs = Wire(new CtrlSigs()).decode(inst, decode_table)
+  val cs = Wire(new CtrlSigs()).decode(inst, decode_table)                                                        // get decoded CtrlSigs (decode according to table)
 
   // Exception Handling
   io.csr_decode.csr := inst(31,20)
@@ -494,7 +494,7 @@ class DecodeUnit(implicit p: Parameters) extends BoomModule
   val cs_legal = cs.legal
 //   dontTouch(cs_legal)
 
-  val id_illegal_insn = !cs_legal ||
+  val id_illegal_insn = !cs_legal ||                                                                              // possible reasons for illegal instructions
     cs.fp_val && io.csr_decode.fp_illegal || // TODO check for illegal rm mode: (io.fpu.illegal_rm)
     cs.rocc && io.csr_decode.rocc_illegal ||
     cs.is_amo && !io.status.isa('a'-'a')  ||
@@ -507,7 +507,7 @@ class DecodeUnit(implicit p: Parameters) extends BoomModule
   def checkExceptions(x: Seq[(Bool, UInt)]) =
     (x.map(_._1).reduce(_||_), PriorityMux(x))
 
-  val (xcpt_valid, xcpt_cause) = checkExceptions(List(
+  val (xcpt_valid, xcpt_cause) = checkExceptions(List(                                                            // possible reasons for exceptions
     (io.interrupt && !io.enq.uop.is_sfb, io.interrupt_cause),  // Disallow interrupts while we are handling a SFB
     (uop.bp_debug_if,                    (CSR.debugTriggerCause).U),
     (uop.bp_xcpt_if,                     (Causes.breakpoint).U),
@@ -538,8 +538,8 @@ class DecodeUnit(implicit p: Parameters) extends BoomModule
   uop.lrs2_rtype := cs.rs2_type
   uop.frs3_en    := cs.frs3_en
 
-  uop.ldst_is_rs1 := uop.is_sfb_shadow
-  // SFB optimization
+  uop.ldst_is_rs1 := uop.is_sfb_shadow                                                        // sfb signals have been generated during fetch stage
+  // SFB optimization                                                                         // [Peinan?]
   when (uop.is_sfb_shadow && cs.rs2_type === RT_X) {
     uop.lrs2_rtype  := RT_FIX
     uop.lrs2        := inst(RD_MSB,RD_LSB)
@@ -558,7 +558,7 @@ class DecodeUnit(implicit p: Parameters) extends BoomModule
   uop.fp_single  := cs.fp_single // TODO use this signal instead of the FPU decode's table signal?
 
   uop.mem_cmd    := cs.mem_cmd
-  uop.mem_size   := Mux(cs.mem_cmd.isOneOf(M_SFENCE, M_FLUSH_ALL), Cat(uop.lrs2 =/= 0.U, uop.lrs1 =/= 0.U), inst(13,12))
+  uop.mem_size   := Mux(cs.mem_cmd.isOneOf(M_SFENCE, M_FLUSH_ALL), Cat(uop.lrs2 =/= 0.U, uop.lrs1 =/= 0.U), inst(13,12))  // get mem_size
   uop.mem_signed := !inst(14)
   uop.uses_ldq   := cs.uses_ldq
   uop.uses_stq   := cs.uses_stq
@@ -592,7 +592,7 @@ class DecodeUnit(implicit p: Parameters) extends BoomModule
 
   //-------------------------------------------------------------
 
-  io.deq.uop := uop
+  io.deq.uop := uop                                                                                                       // output deq
 }
 
 /**
@@ -738,7 +738,7 @@ class BranchMaskGenerationLogic(val pl_width: Int)(implicit p: Parameters) exten
     val debug_branch_mask = Output(UInt(maxBrCount.W))
   })
 
-  val branch_mask = RegInit(0.U(maxBrCount.W))
+  val branch_mask = RegInit(0.U(maxBrCount.W))                                          // max number of branch
 
   //-------------------------------------------------------------
   // Give out the branch tag to each branch micro-op
@@ -748,7 +748,7 @@ class BranchMaskGenerationLogic(val pl_width: Int)(implicit p: Parameters) exten
 
   for (w <- 0 until pl_width) {
     // TODO this is a loss of performance as we're blocking branches based on potentially fake branches
-    io.is_full(w) := (allocate_mask === ~(0.U(maxBrCount.W))) && io.is_branch(w)
+    io.is_full(w) := (allocate_mask === ~(0.U(maxBrCount.W))) && io.is_branch(w)        // encountering a branch but all masks are allocated
 
     // find br_tag and compute next br_mask
     val new_br_tag = Wire(UInt(brTagSz.W))
@@ -756,14 +756,14 @@ class BranchMaskGenerationLogic(val pl_width: Int)(implicit p: Parameters) exten
     tag_masks(w) := 0.U
 
     for (i <- maxBrCount-1 to 0 by -1) {
-      when (~allocate_mask(i)) {
-        new_br_tag := i.U
-        tag_masks(w) := (1.U << i.U)
+      when (~allocate_mask(i)) {                                                        // find a mask not used
+        new_br_tag := i.U                                                               // new_br_tag is the least available mask
+        tag_masks(w) := (1.U << i.U)                                                    // tag_masks(w) is the tag to be allocated
       }
     }
 
-    io.br_tag(w) := new_br_tag
-    allocate_mask = Mux(io.is_branch(w), tag_masks(w) | allocate_mask, allocate_mask)
+    io.br_tag(w) := new_br_tag                                                          // br_tag indicates which tag is used by current branch
+    allocate_mask = Mux(io.is_branch(w), tag_masks(w) | allocate_mask, allocate_mask)   // update latest branch mask for a branch instruction
   }
 
   //-------------------------------------------------------------
@@ -773,19 +773,19 @@ class BranchMaskGenerationLogic(val pl_width: Int)(implicit p: Parameters) exten
   var curr_mask = branch_mask
   for (w <- 0 until pl_width) {
     io.br_mask(w) := GetNewBrMask(io.brupdate, curr_mask)
-    curr_mask = Mux(io.will_fire(w), tag_masks(w) | curr_mask, curr_mask)
+    curr_mask = Mux(io.will_fire(w), tag_masks(w) | curr_mask, curr_mask)       // current stage
   }
 
   //-------------------------------------------------------------
   // Update the current branch_mask
 
   when (io.flush_pipeline) {
-    branch_mask := 0.U
+    branch_mask := 0.U                                                                  // clear masks while flushing pipeline
   } .otherwise {
     val mask = Mux(io.brupdate.b2.mispredict,
       io.brupdate.b2.uop.br_mask,
-      ~(0.U(maxBrCount.W)))
-    branch_mask := GetNewBrMask(io.brupdate, curr_mask) & mask
+      ~(0.U(maxBrCount.W)))                                                             // if b2 mispredict, assign to older br_mask. otherwise, 0xff
+    branch_mask := GetNewBrMask(io.brupdate, curr_mask) & mask                  // next stage since branch_mask is a register
   }
 
   io.debug_branch_mask := branch_mask

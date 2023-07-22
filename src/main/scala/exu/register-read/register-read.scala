@@ -115,25 +115,25 @@ class RegisterRead(
     val rs3_addr = io.iss_uops(w).prs3
     val pred_addr = io.iss_uops(w).ppred
 
-    if (numReadPorts > 0) io.rf_read_ports(idx+0).addr := rs1_addr
+    if (numReadPorts > 0) io.rf_read_ports(idx+0).addr := rs1_addr                                                        // rf_read_ports input register indices
     if (numReadPorts > 1) io.rf_read_ports(idx+1).addr := rs2_addr
     if (numReadPorts > 2) io.rf_read_ports(idx+2).addr := rs3_addr
 
     if (enableSFBOpt) io.prf_read_ports(w).addr := pred_addr
 
-    if (numReadPorts > 0) rrd_rs1_data(w) := Mux(RegNext(rs1_addr === 0.U), 0.U, io.rf_read_ports(idx+0).data)
+    if (numReadPorts > 0) rrd_rs1_data(w) := Mux(RegNext(rs1_addr === 0.U), 0.U, io.rf_read_ports(idx+0).data)            // rf_read_ports output data
     if (numReadPorts > 1) rrd_rs2_data(w) := Mux(RegNext(rs2_addr === 0.U), 0.U, io.rf_read_ports(idx+1).data)
     if (numReadPorts > 2) rrd_rs3_data(w) := Mux(RegNext(rs3_addr === 0.U), 0.U, io.rf_read_ports(idx+2).data)
 
     if (enableSFBOpt) rrd_pred_data(w) := Mux(RegNext(io.iss_uops(w).is_sfb_shadow), io.prf_read_ports(w).data, false.B)
 
-    val rrd_kill = io.kill || IsKilledByBranch(io.brupdate, rrd_uops(w))
+    val rrd_kill = io.kill || IsKilledByBranch(io.brupdate, rrd_uops(w))                                                    // IsKilledByBranch - maskMatch(brupdate.b1.mispredict_mask, uop.br_mask)
 
-    exe_reg_valids(w) := Mux(rrd_kill, false.B, rrd_valids(w))
+    exe_reg_valids(w) := Mux(rrd_kill, false.B, rrd_valids(w))                                                              // tell execute whether the regs are valid
     // TODO use only the valids signal, don't require us to set nullUop
-    exe_reg_uops(w)   := Mux(rrd_kill, NullMicroOp, rrd_uops(w))
+    exe_reg_uops(w)   := Mux(rrd_kill, NullMicroOp, rrd_uops(w))                                                            // uops
 
-    exe_reg_uops(w).br_mask := GetNewBrMask(io.brupdate, rrd_uops(w))
+    exe_reg_uops(w).br_mask := GetNewBrMask(io.brupdate, rrd_uops(w))                                                       // br_mask
 
     idx += numReadPorts
   }
@@ -149,7 +149,7 @@ class RegisterRead(
   //       them!).
   //    - only bypass integer registers.
 
-  val bypassed_rs1_data = Wire(Vec(issueWidth, Bits(registerWidth.W)))
+  val bypassed_rs1_data = Wire(Vec(issueWidth, Bits(registerWidth.W)))                                                      // wakeup from execute units
   val bypassed_rs2_data = Wire(Vec(issueWidth, Bits(registerWidth.W)))
   val bypassed_pred_data = Wire(Vec(issueWidth, Bool()))
   bypassed_pred_data := DontCare

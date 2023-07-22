@@ -36,7 +36,7 @@ class IssueUnitCollapsing(
   // Figure out how much to shift entries by
 
   val maxShift = dispatchWidth
-  val vacants = issue_slots.map(s => !(s.valid)) ++ io.dis_uops.map(_.valid).map(!_.asBool)
+  val vacants = issue_slots.map(s => !(s.valid)) ++ io.dis_uops.map(_.valid).map(!_.asBool)     // valid signals from issue_slot + dis_uops
   val shamts_oh = Array.fill(numIssueSlots+dispatchWidth) {Wire(UInt(width=maxShift.W))}
   // track how many to shift up this entry by by counting previous vacant spots
   def SaturatingCounterOH(count_oh:UInt, inc: Bool, max: Int): UInt = {
@@ -49,9 +49,9 @@ class IssueUnitCollapsing(
      }
      next
   }
-  shamts_oh(0) := 0.U
+  shamts_oh(0) := 0.U                                                                           // 0-entry does not need to move
   for (i <- 1 until numIssueSlots + dispatchWidth) {
-    shamts_oh(i) := SaturatingCounterOH(shamts_oh(i-1), vacants(i-1), maxShift)
+    shamts_oh(i) := SaturatingCounterOH(shamts_oh(i-1), vacants(i-1), maxShift)                 // i-entry = shamts_oh(i-1)<<1 + vacants(i-1)  (one-hot encoding)          fun!
   }
 
   //-------------------------------------------------------------
@@ -61,19 +61,19 @@ class IssueUnitCollapsing(
                       (0 until dispatchWidth).map(i => io.dis_uops(i).valid &&
                                                         !dis_uops(i).exception &&
                                                         !dis_uops(i).is_fence &&
-                                                        !dis_uops(i).is_fencei)
+                                                        !dis_uops(i).is_fencei)                 // iss.will_be_valid ++ dis - no exception, not fence, not fencei
 
   val uops = issue_slots.map(s=>s.out_uop) ++ dis_uops.map(s=>s)
   for (i <- 0 until numIssueSlots) {
     issue_slots(i).in_uop.valid := false.B
-    issue_slots(i).in_uop.bits  := uops(i+1)
+    issue_slots(i).in_uop.bits  := uops(i+1)                            // default value, update in subsequent.
     for (j <- 1 to maxShift by 1) {
       when (shamts_oh(i+j) === (1 << (j-1)).U) {
         issue_slots(i).in_uop.valid := will_be_valid(i+j)
         issue_slots(i).in_uop.bits  := uops(i+j)
       }
     }
-    issue_slots(i).clear        := shamts_oh(i) =/= 0.U
+    issue_slots(i).clear        := shamts_oh(i) =/= 0.U                 // if shamts_oh does not equal to 0, it will be moved -> cleared        (clear is used for set state machine of corresponding issue slot)
   }
 
   //-------------------------------------------------------------
@@ -84,7 +84,7 @@ class IssueUnitCollapsing(
                             (!issue_slots(i).will_be_valid || issue_slots(i).clear) && !(issue_slots(i).in_uop.valid))
   val num_available = PopCount(will_be_available)
   for (w <- 0 until dispatchWidth) {
-    io.dis_uops(w).ready := RegNext(num_available > w.U)
+    io.dis_uops(w).ready := RegNext(num_available > w.U)                // dis_uop.ready -> the number of available instructions
   }
 
   //-------------------------------------------------------------
@@ -102,7 +102,7 @@ class IssueUnitCollapsing(
     io.iss_uops(w).lrs2_rtype := RT_X
   }
 
-  val requests = issue_slots.map(s => s.request)
+  val requests = issue_slots.map(s => s.request)                        // request is calculated in issue-slot.scala -> to be issued
   val port_issued = Array.fill(issueWidth){Bool()}
   for (w <- 0 until issueWidth) {
     port_issued(w) = false.B
@@ -113,16 +113,16 @@ class IssueUnitCollapsing(
     var uop_issued = false.B
 
     for (w <- 0 until issueWidth) {
-      val can_allocate = (issue_slots(i).uop.fu_code & io.fu_types(w)) =/= 0.U
+      val can_allocate = (issue_slots(i).uop.fu_code & io.fu_types(w)) =/= 0.U                  // allocate instructions to execution units according to the function unit type
 
-      when (requests(i) && !uop_issued && can_allocate && !port_issued(w)) {
+      when (requests(i) && !uop_issued && can_allocate && !port_issued(w)) {    // enough function units, -> can issue   | port_issued guarantees that there are only w instructions
         issue_slots(i).grant := true.B
         io.iss_valids(w) := true.B
         io.iss_uops(w) := issue_slots(i).uop
       }
       val was_port_issued_yet = port_issued(w)
       port_issued(w) = (requests(i) && !uop_issued && can_allocate) | port_issued(w)
-      uop_issued = (requests(i) && can_allocate && !was_port_issued_yet) | uop_issued
+      uop_issued = (requests(i) && can_allocate && !was_port_issued_yet) | uop_issued           // in this inner loop, if a valid entry is found, break to the outer loop
     }
   }
 }

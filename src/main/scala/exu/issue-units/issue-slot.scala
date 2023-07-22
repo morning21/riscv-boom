@@ -96,7 +96,7 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
   val p2_poisoned = RegInit(false.B)
   p1_poisoned := false.B
   p2_poisoned := false.B
-  val next_p1_poisoned = Mux(io.in_uop.valid, io.in_uop.bits.iw_p1_poisoned, p1_poisoned)
+  val next_p1_poisoned = Mux(io.in_uop.valid, io.in_uop.bits.iw_p1_poisoned, p1_poisoned)                     // current input or holds.
   val next_p2_poisoned = Mux(io.in_uop.valid, io.in_uop.bits.iw_p2_poisoned, p2_poisoned)
 
   val slot_uop = RegInit(NullMicroOp)
@@ -110,9 +110,9 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
   when (io.kill) {
     state := s_invalid
   } .elsewhen (io.in_uop.valid) {
-    state := io.in_uop.bits.iw_state
+    state := io.in_uop.bits.iw_state                // if valid, equals to issue state
   } .elsewhen (io.clear) {
-    state := s_invalid
+    state := s_invalid                              // clear or kill, set invalid
   } .otherwise {
     state := next_state
   }
@@ -131,7 +131,7 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
   when (io.kill) {
     next_state := s_invalid
   } .elsewhen ((io.grant && (state === s_valid_1)) ||
-    (io.grant && (state === s_valid_2) && p1 && p2 && ppred)) {
+    (io.grant && (state === s_valid_2) && p1 && p2 && ppred)) {                           // [Peinan?]
     // try to issue this uop.
     when (!(io.ldspec_miss && (p1_poisoned || p2_poisoned))) {
       next_state := s_invalid
@@ -151,7 +151,7 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
     }
   }
 
-  when (io.in_uop.valid) {
+  when (io.in_uop.valid) {                                                              // if valid, update uop from inputs, corresponding signals are updated individually later.
     slot_uop := io.in_uop.bits
     assert (is_invalid || io.clear || io.kill, "trying to overwrite a valid issue slot.")
   }
@@ -224,11 +224,11 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
 
 
   // Handle branch misspeculations
-  val next_br_mask = GetNewBrMask(io.brupdate, slot_uop)
+  val next_br_mask = GetNewBrMask(io.brupdate, slot_uop)                                        // uop.br_mask & ~brupdate.b1.resolve_mask
 
   // was this micro-op killed by a branch? if yes, we can't let it be valid if
   // we compact it into an other entry
-  when (IsKilledByBranch(io.brupdate, slot_uop)) {
+  when (IsKilledByBranch(io.brupdate, slot_uop)) {                                              // maskMatch(brupdate.b1.mispredict_mask, uop.br_mask)
     next_state := s_invalid
   }
 
@@ -238,8 +238,8 @@ class IssueSlot(val numWakeupPorts: Int)(implicit p: Parameters)
 
   //-------------------------------------------------------------
   // Request Logic
-  io.request := is_valid && p1 && p2 && p3 && ppred && !io.kill
-  val high_priority = slot_uop.is_br || slot_uop.is_jal || slot_uop.is_jalr
+  io.request := is_valid && p1 && p2 && p3 && ppred && !io.kill                                 // request -> to be issued
+  val high_priority = slot_uop.is_br || slot_uop.is_jal || slot_uop.is_jalr                     // branch has high priority
   io.request_hp := io.request && high_priority
 
   when (state === s_valid_1) {

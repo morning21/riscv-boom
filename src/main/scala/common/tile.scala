@@ -69,7 +69,7 @@ case class BoomTileParams(
  * BOOM tile
  *
  */
-class BoomTile private(
+class BoomTile private(                                                                                                                 // extends from BaseTile.
   val boomParams: BoomTileParams,
   crossing: ClockCrossingType,
   lookup: LookupByHartIdImpl,
@@ -93,11 +93,11 @@ class BoomTile private(
       .map(BasicBusBlockerParams(_, xBytes, masterPortBeatBytes, deadlock = true))
       .map(bp => LazyModule(new BasicBusBlocker(bp)))
 
-  tile_master_blocker.foreach(lm => connectTLSlave(lm.controlNode, xBytes))
+  tile_master_blocker.foreach(lm => connectTLSlave(lm.controlNode, xBytes))                                                             // [Peinan?]
 
   // TODO: this doesn't block other masters, e.g. RoCCs
-  tlOtherMastersNode := tile_master_blocker.map { _.node := tlMasterXbar.node } getOrElse { tlMasterXbar.node }
-  masterNode :=* tlOtherMastersNode
+  tlOtherMastersNode := tile_master_blocker.map { _.node := tlMasterXbar.node } getOrElse { tlMasterXbar.node }                         // tile_master_blocker tlMasterXbar -> tlOtherMasterNode
+  masterNode :=* tlOtherMastersNode                                                                                                     // tlOtherMasterNode -> masterNode
 
   val cpuDevice: SimpleDevice = new SimpleDevice("cpu", Seq("ucb-bar,boom0", "riscv")) {
     override def parent = Some(ResourceAnchors.cpus)
@@ -128,21 +128,21 @@ class BoomTile private(
     case _ => TLBuffer(BufferParams.none)
   }
 
-  override lazy val module = new BoomTileModuleImp(this)
+  override lazy val module = new BoomTileModuleImp(this)                                                                                // module = BoomTileModuleImp
 
   // DCache
-  lazy val dcache: BoomNonBlockingDCache = LazyModule(new BoomNonBlockingDCache(staticIdForMetadataUseOnly))
+  lazy val dcache: BoomNonBlockingDCache = LazyModule(new BoomNonBlockingDCache(staticIdForMetadataUseOnly))                            // dcache = BoomNonBlockingDCache
   val dCacheTap = TLIdentityNode()
-  tlMasterXbar.node := dCacheTap := dcache.node
+  tlMasterXbar.node := dCacheTap := dcache.node                                                                                         // dcache -> dCacheTap -> TL
 
 
   // Frontend/ICache
-  val frontend = LazyModule(new BoomFrontend(tileParams.icache.get, staticIdForMetadataUseOnly))
+  val frontend = LazyModule(new BoomFrontend(tileParams.icache.get, staticIdForMetadataUseOnly))                                        // frontend = BoomFrontend
   frontend.resetVectorSinkNode := resetVectorNexusNode
   tlMasterXbar.node := frontend.masterNode
 
   // ROCC
-  val roccs = p(BuildRoCC).map(_(p))
+  val roccs = p(BuildRoCC).map(_(p))                                                                                                    // rocc
   roccs.map(_.atlNode).foreach { atl => tlMasterXbar.node :=* atl }
   roccs.map(_.tlNode).foreach { tl => tlOtherMastersNode :=* tl }
 }
@@ -152,14 +152,14 @@ class BoomTile private(
  *
  * @param outer top level BOOM tile
  */
-class BoomTileModuleImp(outer: BoomTile) extends BaseTileModuleImp(outer){
+class BoomTileModuleImp(outer: BoomTile) extends BaseTileModuleImp(outer){                                                              // insider of Tile. connects to outer (Tile)
 
   Annotated.params(this, outer.boomParams)
 
-  val core = Module(new BoomCore(outer.boomParams.trace)(outer.p))
-  val lsu  = Module(new LSU()(outer.p, outer.dcache.module.edge))
+  val core = Module(new BoomCore(outer.boomParams.trace)(outer.p))                                                                      // core
+  val lsu  = Module(new LSU()(outer.p, outer.dcache.module.edge))                                                                       // lsu
 
-  val ptwPorts         = ListBuffer(lsu.io.ptw, outer.frontend.module.io.ptw, core.io.ptw_tlb)
+  val ptwPorts         = ListBuffer(lsu.io.ptw, outer.frontend.module.io.ptw, core.io.ptw_tlb)                                  // ports that will be connected to ptw (lsu, frontend, core.io.ptw_tlb)
 
   val hellaCachePorts  = ListBuffer[HellaCacheIO]()
 
@@ -174,7 +174,7 @@ class BoomTileModuleImp(outer: BoomTile) extends BaseTileModuleImp(outer){
   core.io.hartid := outer.hartIdSinkNode.bundle
 
   // Connect the core pipeline to other intra-tile modules
-  outer.frontend.module.io.cpu <> core.io.ifu
+  outer.frontend.module.io.cpu <> core.io.ifu                                                                                           // frontend.io.cpu <> core.io.ifu
   core.io.lsu <> lsu.io.core
 
   //fpuOpt foreach { fpu => core.io.fpu <> fpu.io } RocketFpu - not needed in boom
@@ -228,14 +228,14 @@ class BoomTileModuleImp(outer: BoomTile) extends BaseTileModuleImp(outer){
 
   // PTW
   val ptw  = Module(new PTW(ptwPorts.length)(outer.dcache.node.edges.out(0), outer.p))
-  core.io.ptw <> ptw.io.dpath
-  ptw.io.requestor <> ptwPorts
-  hellaCachePorts += ptw.io.mem
+  core.io.ptw <> ptw.io.dpath                                                                                                       // ptw.io.dpath <> core.io.ptw
+  ptw.io.requestor <> ptwPorts                                                                                                      // lsu, frontend, core.io.ptw_tlb   <> ptw.io.requestor
+  hellaCachePorts += ptw.io.mem                                                                                                     // ptw <> dcache
 
    // LSU IO
   val hellaCacheArb = Module(new HellaCacheArbiter(hellaCachePorts.length)(outer.p))
-  hellaCacheArb.io.requestor <> hellaCachePorts
-  lsu.io.hellacache <> hellaCacheArb.io.mem
+  hellaCacheArb.io.requestor <> hellaCachePorts                                                                                     // ptw.io.mem <> hellaCacheArb.io.requester
+  lsu.io.hellacache <> hellaCacheArb.io.mem                                                                                         // hellaCacheArb.io.mem <> lsu.io.hellacache
   outer.dcache.module.io.lsu <> lsu.io.dmem
 
   // Generate a descriptive string

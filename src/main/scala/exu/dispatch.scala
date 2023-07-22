@@ -44,10 +44,10 @@ class BasicDispatcher(implicit p: Parameters) extends Dispatcher
 {
   issueParams.map(ip=>require(ip.dispatchWidth == coreWidth))
 
-  val ren_readys = io.dis_uops.map(d=>VecInit(d.map(_.ready)).asUInt).reduce(_&_)
+  val ren_readys = io.dis_uops.map(d=>VecInit(d.map(_.ready)).asUInt).reduce(_&_)                 // issue_units[0].ready & issue_unit[1].ready & ..      every ready has dispatch-width bit
 
   for (w <- 0 until coreWidth) {
-    io.ren_uops(w).ready := ren_readys(w)
+    io.ren_uops(w).ready := ren_readys(w)                                                         // each ready is mappting to inform corresponding ready signals in rename stage
   }
 
   for {i <- 0 until issueParams.size
@@ -55,7 +55,7 @@ class BasicDispatcher(implicit p: Parameters) extends Dispatcher
     val issueParam = issueParams(i)
     val dis        = io.dis_uops(i)
 
-    dis(w).valid := io.ren_uops(w).valid && ((io.ren_uops(w).bits.iq_type & issueParam.iqType.U) =/= 0.U)
+    dis(w).valid := io.ren_uops(w).valid && ((io.ren_uops(w).bits.iq_type & issueParam.iqType.U) =/= 0.U)     // iq_type for each kind of instruction can be found in decode stage (float store operations may need flow and memory issue units at the same time)
     dis(w).bits  := io.ren_uops(w).bits
   }
 }
@@ -82,6 +82,7 @@ class CompactingDispatcher(implicit p: Parameters) extends Dispatcher
     // Only request an issue slot if the uop needs to enter that queue.
     (ren zip io.ren_uops zip uses_iq) foreach {case ((u,v),q) =>
       u.valid := v.valid && q}
+      // ren.valid := ren_uop.valid && uses_iq
 
     val compactor = Module(new Compactor(coreWidth, ip.dispatchWidth, new MicroOp))
     compactor.io.in  <> ren

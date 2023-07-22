@@ -94,13 +94,13 @@ abstract class AbstractRenameStage(
   // Pipeline State & Wires
 
   // Stage 1
-  val ren1_fire       = Wire(Vec(plWidth, Bool()))
+  val ren1_fire       = Wire(Vec(plWidth, Bool()))                    // ren1 is from decode directly
   val ren1_uops       = Wire(Vec(plWidth, new MicroOp))
 
 
   // Stage 2
-  val ren2_fire       = io.dis_fire
-  val ren2_ready      = io.dis_ready
+  val ren2_fire       = io.dis_fire                                   // core.scala   dis_fire <- dis_valid <- ren2_mask
+  val ren2_ready      = io.dis_ready                                  // valid and dispatch does not stall
   val ren2_valids     = Wire(Vec(plWidth, Bool()))
   val ren2_uops       = Wire(Vec(plWidth, new MicroOp))
   val ren2_alloc_reqs = Wire(Vec(plWidth, Bool()))
@@ -131,7 +131,8 @@ abstract class AbstractRenameStage(
       next_uop := r_uop
     }
 
-    r_uop := GetNewUopAndBrMask(BypassAllocations(next_uop, ren2_uops, ren2_alloc_reqs), io.brupdate)
+    r_uop := GetNewUopAndBrMask(BypassAllocations(next_uop, ren2_uops, ren2_alloc_reqs), io.brupdate)               // remove the dependencies between different instructions within the same packet
+                                              // uop, odler_uops, alloc_req
 
     ren2_valids(w) := r_valid
     ren2_uops(w)   := r_uop
@@ -174,7 +175,7 @@ class RenameStage(
     val bypass_hits_rs1 = (older_uops zip alloc_reqs) map { case (r,a) => a && r.ldst === uop.lrs1 }
     val bypass_hits_rs2 = (older_uops zip alloc_reqs) map { case (r,a) => a && r.ldst === uop.lrs2 }
     val bypass_hits_rs3 = (older_uops zip alloc_reqs) map { case (r,a) => a && r.ldst === uop.lrs3 }
-    val bypass_hits_dst = (older_uops zip alloc_reqs) map { case (r,a) => a && r.ldst === uop.ldst }
+    val bypass_hits_dst = (older_uops zip alloc_reqs) map { case (r,a) => a && r.ldst === uop.ldst }   // older uops' destination registers === uop. lrs1 /2 3 / ldst
 
     val bypass_sel_rs1 = PriorityEncoderOH(bypass_hits_rs1.reverse).reverse
     val bypass_sel_rs2 = PriorityEncoderOH(bypass_hits_rs2.reverse).reverse
@@ -191,7 +192,7 @@ class RenameStage(
     when (do_bypass_rs1) { bypassed_uop.prs1       := Mux1H(bypass_sel_rs1, bypass_pdsts) }
     when (do_bypass_rs2) { bypassed_uop.prs2       := Mux1H(bypass_sel_rs2, bypass_pdsts) }
     when (do_bypass_rs3) { bypassed_uop.prs3       := Mux1H(bypass_sel_rs3, bypass_pdsts) }
-    when (do_bypass_dst) { bypassed_uop.stale_pdst := Mux1H(bypass_sel_dst, bypass_pdsts) }
+    when (do_bypass_dst) { bypassed_uop.stale_pdst := Mux1H(bypass_sel_dst, bypass_pdsts) }             // stale_pdst
 
     bypassed_uop.prs1_busy := uop.prs1_busy || do_bypass_rs1
     bypassed_uop.prs2_busy := uop.prs2_busy || do_bypass_rs2
@@ -234,7 +235,7 @@ class RenameStage(
   val rbk_valids      = Wire(Vec(plWidth, Bool()))
 
   for (w <- 0 until plWidth) {
-    ren2_alloc_reqs(w)    := ren2_uops(w).ldst_val && ren2_uops(w).dst_rtype === rtype && ren2_fire(w)
+    ren2_alloc_reqs(w)    := ren2_uops(w).ldst_val && ren2_uops(w).dst_rtype === rtype && ren2_fire(w)            // ren2_fire and legal to request
     ren2_br_tags(w).valid := ren2_fire(w) && ren2_uops(w).allocate_brtag
 
     com_valids(w)         := io.com_uops(w).ldst_val && io.com_uops(w).dst_rtype === rtype && io.com_valids(w)
@@ -250,14 +251,14 @@ class RenameStage(
   val remap_reqs = Wire(Vec(plWidth, new RemapReq(lregSz, pregSz)))
 
   // Generate maptable requests.
-  for ((((ren1,ren2),com),w) <- ren1_uops zip ren2_uops zip io.com_uops.reverse zipWithIndex) {
+  for ((((ren1,ren2),com),w) <- ren1_uops zip ren2_uops zip io.com_uops.reverse zipWithIndex) {     // intput to map request: lrs and lrdt
     map_reqs(w).lrs1 := ren1.lrs1
     map_reqs(w).lrs2 := ren1.lrs2
     map_reqs(w).lrs3 := ren1.lrs3
     map_reqs(w).ldst := ren1.ldst
 
-    remap_reqs(w).ldst := Mux(io.rollback, com.ldst      , ren2.ldst)
-    remap_reqs(w).pdst := Mux(io.rollback, com.stale_pdst, ren2.pdst)
+    remap_reqs(w).ldst := Mux(io.rollback, com.ldst      , ren2.ldst)         // if rollback, ldst recover to com.ldst        (from committed instruction)
+    remap_reqs(w).pdst := Mux(io.rollback, com.stale_pdst, ren2.pdst)         // if rollback, pdst recover to com.stale_pdst  (from committed instruction) find original correct physical register
   }
   ren2_alloc_reqs zip rbk_valids.reverse zip remap_reqs map {
     case ((a,r),rr) => rr.valid := a || r}
@@ -270,7 +271,7 @@ class RenameStage(
   maptable.io.rollback    := io.rollback
 
   // Maptable outputs.
-  for ((uop, w) <- ren1_uops.zipWithIndex) {
+  for ((uop, w) <- ren1_uops.zipWithIndex) {                                                        // get physical number to current uop
     val mappings = maptable.io.map_resps(w)
 
     uop.prs1       := mappings.prs1
@@ -298,9 +299,9 @@ class RenameStage(
            "[rename-stage] A uop is trying to allocate the zero physical register.")
 
   // Freelist outputs.
-  for ((uop, w) <- ren2_uops.zipWithIndex) {
-    val preg = freelist.io.alloc_pregs(w).bits
-    uop.pdst := Mux(uop.ldst =/= 0.U || float.B, preg, 0.U)
+  for ((uop, w) <- ren2_uops.zipWithIndex) {                                                      // get free register in rename 2
+    val preg = freelist.io.alloc_pregs(w).bits                                                    // preg <- get physical register from freelist
+    uop.pdst := Mux(uop.ldst =/= 0.U || float.B, preg, 0.U)                                       // uop.pdst <- preg
   }
 
   //-------------------------------------------------------------

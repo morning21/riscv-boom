@@ -51,7 +51,7 @@ import boom.util._
  */
 class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   with HasBoomFrontendParameters // TODO: Don't add this trait
-{
+{                                                                                                                 // BoomCore extends from BoomModule (abstract from CoreModule (abstract from Module))
   val io = new freechips.rocketchip.tile.CoreBundle
   {
     val hartid = Input(UInt(hartIdLen.W))
@@ -68,13 +68,13 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   // construct all of the modules
 
   // Only holds integer-registerfile execution units.
-  val exe_units = new boom.exu.ExecutionUnits(fpu=false)
+  val exe_units = new boom.exu.ExecutionUnits(fpu=false)                                                        // exe_units
   val jmp_unit_idx = exe_units.jmp_unit_idx
-  val jmp_unit = exe_units(jmp_unit_idx)
+  val jmp_unit = exe_units(jmp_unit_idx)                                                                        // jmp_unit = exe_units . jmp_unit_idx
 
   // Meanwhile, the FP pipeline holds the FP issue window, FP regfile, and FP arithmetic units.
   var fp_pipeline: FpPipeline = null
-  if (usingFPU) fp_pipeline = Module(new FpPipeline)
+if (usingFPU) fp_pipeline = Module(new FpPipeline)                                                              // fpu   -> including issue unit, float registers...
 
   // ********************************************************
   // Clear fp_pipeline before use
@@ -95,27 +95,27 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   val numIntRenameWakeupPorts = numIntIssueWakeupPorts
   val numFpWakeupPorts        = if (usingFPU) fp_pipeline.io.wakeups.length else 0
 
-  val decode_units     = for (w <- 0 until decodeWidth) yield { val d = Module(new DecodeUnit); d }
-  val dec_brmask_logic = Module(new BranchMaskGenerationLogic(coreWidth))
-  val rename_stage     = Module(new RenameStage(coreWidth, numIntPhysRegs, numIntRenameWakeupPorts, false))
-  val fp_rename_stage  = if (usingFPU) Module(new RenameStage(coreWidth, numFpPhysRegs, numFpWakeupPorts, true)) else null
-  val pred_rename_stage = Module(new PredRenameStage(coreWidth, ftqSz, 1))
-  val rename_stages    = if (usingFPU) Seq(rename_stage, fp_rename_stage, pred_rename_stage) else Seq(rename_stage, pred_rename_stage)
+  val decode_units     = for (w <- 0 until decodeWidth) yield { val d = Module(new DecodeUnit); d }                                             // decoder (decode width)
+  val dec_brmask_logic = Module(new BranchMaskGenerationLogic(coreWidth))                                                                       // brmask
+  val rename_stage     = Module(new RenameStage(coreWidth, numIntPhysRegs, numIntRenameWakeupPorts, false))                                     // rename int
+  val fp_rename_stage  = if (usingFPU) Module(new RenameStage(coreWidth, numFpPhysRegs, numFpWakeupPorts, true)) else null                      // rename float
+  val pred_rename_stage = Module(new PredRenameStage(coreWidth, ftqSz, 1))                                                                      // rename pred (sfb [Peinan?])
+  val rename_stages    = if (usingFPU) Seq(rename_stage, fp_rename_stage, pred_rename_stage) else Seq(rename_stage, pred_rename_stage)          // rename_stages (rename, fp_rename, pred_rename)
 
   val mem_iss_unit     = Module(new IssueUnitCollapsing(memIssueParam, numIntIssueWakeupPorts))
   mem_iss_unit.suggestName("mem_issue_unit")
   val int_iss_unit     = Module(new IssueUnitCollapsing(intIssueParam, numIntIssueWakeupPorts))
   int_iss_unit.suggestName("int_issue_unit")
 
-  val issue_units      = Seq(mem_iss_unit, int_iss_unit)
-  val dispatcher       = Module(new BasicDispatcher)
+  val issue_units      = Seq(mem_iss_unit, int_iss_unit)                                                                                        // issue_units (mem_iss_unit, int_iss_unit)
+  val dispatcher       = Module(new BasicDispatcher)                                                                                            // dispatch
 
   val iregfile         = Module(new RegisterFileSynthesizable(
                              numIntPhysRegs,
                              numIrfReadPorts,
                              numIrfWritePorts,
                              xLen,
-                             Seq.fill(memWidth) {true} ++ exe_units.bypassable_write_port_mask)) // bypassable ll_wb
+                             Seq.fill(memWidth) {true} ++ exe_units.bypassable_write_port_mask)) // bypassable ll_wb                            // registers: logical and physical
   val pregfile         = Module(new RegisterFileSynthesizable(
                             ftqSz,
                             exe_units.numIrfReaders,
@@ -129,17 +129,17 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   val ll_wbarb         = Module(new Arbiter(new ExeUnitResp(xLen), 1 +
                                                                    (if (usingFPU) 1 else 0) +
                                                                    (if (usingRoCC) 1 else 0)))
-  val iregister_read   = Module(new RegisterRead(
-                           issue_units.map(_.issueWidth).sum,
+  val iregister_read   = Module(new RegisterRead(                                                                                               // register read
+                           issue_units.map(_.issueWidth).sum,                                                                                   // issueWidth = sum of all issue width from all issue units
                            exe_units.withFilter(_.readsIrf).map(_.supportedFuncUnits),
-                           numIrfReadPorts,
+                           numIrfReadPorts,                                                                                                     // number of register read ports
                            exe_units.withFilter(_.readsIrf).map(x => 2),
                            exe_units.numTotalBypassPorts,
                            jmp_unit.numBypassStages,
                            xLen))
   val rob              = Module(new Rob(
                            numIrfWritePorts + numFpWakeupPorts, // +memWidth for ll writebacks
-                           numFpWakeupPorts))
+                           numFpWakeupPorts))                                                                                                   // rob
   // Used to wakeup registers in rename and issue. ROB needs to listen to something else.
   val int_iss_wakeups  = Wire(Vec(numIntIssueWakeupPorts, Valid(new ExeUnitResp(xLen))))
   val int_ren_wakeups  = Wire(Vec(numIntRenameWakeupPorts, Valid(new ExeUnitResp(xLen))))
@@ -183,8 +183,8 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   // brindices contains indices to reset pointers for allocated structures
   //           brindices is delayed a cycle
   val brupdate  = Wire(new BrUpdateInfo)
-  val b1    = Wire(new BrUpdateMasks)
-  val b2    = Reg(new BrResolutionInfo)
+  val b1    = Wire(new BrUpdateMasks)                                                                                               // br update mask      (Wire)
+  val b2    = Reg(new BrResolutionInfo)                                                                                             // br resolution info  (Reg)
 
   brupdate.b1 := b1
   brupdate.b2 := b2
@@ -221,21 +221,21 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   assert (!((brupdate.b1.mispredict_mask =/= 0.U || brupdate.b2.mispredict)
     && rob.io.commit.rollback), "Can't have a mispredict during rollback.")
 
-  io.ifu.brupdate := brupdate
+  io.ifu.brupdate := brupdate                                                                                                       // io.ifu.brupdate = brupdate
 
   for (eu <- exe_units) {
     eu.io.brupdate := brupdate
-  }
+  }                                                                                                                                 // eu.io.brupdate = brupdate
 
   if (usingFPU) {
-    fp_pipeline.io.brupdate := brupdate
+    fp_pipeline.io.brupdate := brupdate                                                                                             // fp_pipeline.io.brupdate := brupdate
   }
 
   // Load/Store Unit & ExeUnits
   val mem_units = exe_units.memory_units
   val mem_resps = mem_units.map(_.io.ll_iresp)
   for (i <- 0 until memWidth) {
-    mem_units(i).io.lsu_io <> io.lsu.exe(i)
+    mem_units(i).io.lsu_io <> io.lsu.exe(i)         // lsu exe_req              // io.lsu_io comes from memory address calculation units
   }
 
   //-------------------------------------------------------------
@@ -265,7 +265,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
       ("ITLB miss",   () => io.ifu.perf.tlbMiss),
       ("DTLB miss",   () => io.lsu.perf.tlbMiss),
       ("L2 TLB miss", () => io.ptw.perf.l2miss)))))
-  val csr = Module(new freechips.rocketchip.rocket.CSRFile(perfEvents, boomParams.customCSRs.decls))
+  val csr = Module(new freechips.rocketchip.rocket.CSRFile(perfEvents, boomParams.customCSRs.decls))                                // csr
   csr.io.inst foreach { c => c := DontCare }
   csr.io.rocc_interrupt := io.rocc.interrupt
 
@@ -500,8 +500,8 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
 
   for (w <- 0 until coreWidth) {
     dec_valids(w)                      := io.ifu.fetchpacket.valid && dec_fbundle.uops(w).valid &&
-                                          !dec_finished_mask(w)
-    decode_units(w).io.enq.uop         := dec_fbundle.uops(w).bits
+                                          !dec_finished_mask(w)                                           // fetchpacket instruction is valid and [not finished mask]
+    decode_units(w).io.enq.uop         := dec_fbundle.uops(w).bits                                        // from fetchpacket to decoder
     decode_units(w).io.status          := csr.io.status
     decode_units(w).io.csr_decode      <> csr.io.decode(w)
     decode_units(w).io.interrupt       := csr.io.interrupt
@@ -570,13 +570,13 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
                       || branch_mask_full(w)
                       || brupdate.b1.mispredict_mask =/= 0.U
                       || brupdate.b2.mispredict
-                      || io.ifu.redirect_flush))
+                      || io.ifu.redirect_flush))                                                        // if these conditions occur, trigger hazards.
 
-  val dec_stalls = dec_hazards.scanLeft(false.B) ((s,h) => s || h).takeRight(coreWidth)
-  dec_fire := (0 until coreWidth).map(w => dec_valids(w) && !dec_stalls(w))
+  val dec_stalls = dec_hazards.scanLeft(false.B) ((s,h) => s || h).takeRight(coreWidth)                 // hazards -> stalls
+  dec_fire := (0 until coreWidth).map(w => dec_valids(w) && !dec_stalls(w))                             // dec_fire  <-   dec_valid and not stalled
 
   // all decoders are empty and ready for new instructions
-  dec_ready := dec_fire.last
+  dec_ready := dec_fire.last                                                                            // last indicate all decode operations finishes [grammar of scanLeft]
 
   when (dec_ready || io.ifu.redirect_flush) {
     dec_finished_mask := 0.U
@@ -614,7 +614,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
     rename.io.debug_rob_empty := rob.io.empty
 
     rename.io.dec_fire := dec_fire
-    rename.io.dec_uops := dec_uops
+    rename.io.dec_uops := dec_uops                                                                      // from decoder to rename
 
     rename.io.dis_fire := dis_fire
     rename.io.dis_ready := dis_ready
@@ -627,8 +627,8 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
 
 
   // Outputs
-  dis_uops := rename_stage.io.ren2_uops
-  dis_valids := rename_stage.io.ren2_mask
+  dis_uops := rename_stage.io.ren2_uops                                                                 // dis_uop <- ren2_uops
+  dis_valids := rename_stage.io.ren2_mask                                                               // dis_valid <- ren2_mask
   ren_stalls := rename_stage.io.ren_stalls
 
 
@@ -758,7 +758,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   // Dispatch to issue queues
 
   // Get uops from rename2
-  for (w <- 0 until coreWidth) {
+  for (w <- 0 until coreWidth) {                                                                               // from ren1 to dispatcher
     dispatcher.io.ren_uops(w).valid := dis_fire(w)
     dispatcher.io.ren_uops(w).bits  := dis_uops(w)
   }
@@ -766,11 +766,11 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   var iu_idx = 0
   // Send dispatched uops to correct issue queues
   // Backpressure through dispatcher if necessary
-  for (i <- 0 until issueParams.size) {
+  for (i <- 0 until issueParams.size) {                                                                       // multiple issue units are connected to dispatcher
     if (issueParams(i).iqType == IQT_FP.litValue) {
        fp_pipeline.io.dis_uops <> dispatcher.io.dis_uops(i)
     } else {
-       issue_units(iu_idx).io.dis_uops <> dispatcher.io.dis_uops(i)
+       issue_units(iu_idx).io.dis_uops <> dispatcher.io.dis_uops(i)                                             // from dispatcher to issue units
        iu_idx += 1
     }
   }
@@ -785,7 +785,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
 
   var iss_wu_idx = 1
   var ren_wu_idx = 1
-  // The 0th wakeup port goes to the ll_wbarb
+  // The 0th wakeup port goes to the ll_wbarb                                                                   // iss and ren get wakeup signals.
   int_iss_wakeups(0).valid := ll_wbarb.io.out.fire() && ll_wbarb.io.out.bits.uop.dst_rtype === RT_FIX
   int_iss_wakeups(0).bits  := ll_wbarb.io.out.bits
 
@@ -813,7 +813,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
       val resp = exe_units(i).io.iresp
       assert(!(resp.valid && resp.bits.uop.rf_wen && resp.bits.uop.dst_rtype =/= RT_FIX))
 
-      // Fast Wakeup (uses just-issued uops that have known latencies)
+      // Fast Wakeup (uses just-issued uops that have known latencies)                                              // fix latency (pipelined) -> fast wakeup
       fast_wakeup.bits.uop := iss_uops(i)
       fast_wakeup.valid    := iss_valids(i) &&
                               iss_uops(i).bypassable &&
@@ -821,7 +821,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
                               iss_uops(i).ldst_val &&
                               !(io.lsu.ld_miss && (iss_uops(i).iw_p1_poisoned || iss_uops(i).iw_p2_poisoned))
 
-      // Slow Wakeup (uses write-port to register file)
+      // Slow Wakeup (uses write-port to register file)                                                             // non-fix latency -> slow wakeup (requires hand shake)
       slow_wakeup.bits.uop := resp.bits.uop
       slow_wakeup.valid    := resp.valid &&
                                 resp.bits.uop.rf_wen &&
@@ -909,7 +909,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   var int_iss_cnt = 0
   var mem_iss_cnt = 0
   for (w <- 0 until exe_units.length) {
-    var fu_types = exe_units(w).io.fu_types
+    var fu_types = exe_units(w).io.fu_types                                                             // assign function unit type of execution units    to     issue queue
     val exe_unit = exe_units(w)
     if (exe_unit.readsIrf) {
       if (exe_unit.supportedFuncUnits.muld) {
@@ -920,12 +920,12 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
       }
 
       if (exe_unit.hasMem) {
-        iss_valids(iss_idx) := mem_iss_unit.io.iss_valids(mem_iss_cnt)
+        iss_valids(iss_idx) := mem_iss_unit.io.iss_valids(mem_iss_cnt)                                  // from mem_iss_unit    ->   register_read
         iss_uops(iss_idx)   := mem_iss_unit.io.iss_uops(mem_iss_cnt)
         mem_iss_unit.io.fu_types(mem_iss_cnt) := Mux(pause_mem, 0.U, fu_types)
         mem_iss_cnt += 1
       } else {
-        iss_valids(iss_idx) := int_iss_unit.io.iss_valids(int_iss_cnt)
+        iss_valids(iss_idx) := int_iss_unit.io.iss_valids(int_iss_cnt)                                  // from int_iss_unit    ->   register_read
         iss_uops(iss_idx)   := int_iss_unit.io.iss_uops(int_iss_cnt)
         int_iss_unit.io.fu_types(int_iss_cnt) := fu_types
         int_iss_cnt += 1
@@ -1071,7 +1071,7 @@ class BoomCore(usingTrace: Boolean)(implicit p: Parameters) extends BoomModule
   for (w <- 0 until exe_units.length) {
     val exe_unit = exe_units(w)
     if (exe_unit.readsIrf) {
-      exe_unit.io.req <> iregister_read.io.exe_reqs(iss_idx)
+      exe_unit.io.req <> iregister_read.io.exe_reqs(iss_idx)                    // exe_unit.io.req <- regsiter_read
 
       if (exe_unit.bypassable) {
         for (i <- 0 until exe_unit.numBypassStages) {

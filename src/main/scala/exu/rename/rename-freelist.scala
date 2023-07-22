@@ -84,8 +84,8 @@ class RenameFreeList(
     r_valid := r_valid && !io.reqs(w) || can_sel
     sel_fire(w) := (!r_valid || io.reqs(w)) && can_sel
 
-    io.alloc_pregs(w).bits  := r_sel
-    io.alloc_pregs(w).valid := r_valid
+    io.alloc_pregs(w).bits  := r_sel                        // physical register number
+    io.alloc_pregs(w).valid := r_valid                      // phisical register is valid
   }
 
   io.debug.freelist := free_list | io.alloc_pregs.map(p => UIntToOH(p.bits) & Fill(n,p.valid)).reduce(_|_)

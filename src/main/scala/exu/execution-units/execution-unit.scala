@@ -377,7 +377,7 @@ class ALUExeUnit(
   if (hasMem) {
     require(!hasAlu)
     val maddrcalc = Module(new MemAddrCalcUnit)
-    maddrcalc.io.req        <> io.req
+    maddrcalc.io.req        <> io.req                                                       
     maddrcalc.io.req.valid  := io.req.valid && io.req.bits.uop.fu_code_is(FU_MEM)
     maddrcalc.io.brupdate     <> io.brupdate
     maddrcalc.io.status     := io.status
@@ -387,7 +387,7 @@ class ALUExeUnit(
     maddrcalc.io.resp.ready := DontCare
     require(numBypassStages == 0)
 
-    io.lsu_io.req := maddrcalc.io.resp
+    io.lsu_io.req := maddrcalc.io.resp                  // lsu request source // addr
 
     io.ll_iresp <> io.lsu_io.iresp
     if (usingFPU) {

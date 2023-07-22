@@ -43,7 +43,7 @@ trait IssueUnitConstants
   // invalid  : slot holds no valid uop.
   // s_valid_1: slot holds a valid uop.
   // s_valid_2: slot holds a store-like uop that may be broken into two micro-ops.
-  val s_invalid :: s_valid_1 :: s_valid_2 :: Nil = Enum(3)
+  val s_invalid :: s_valid_1 :: s_valid_2 :: Nil = Enum(3)                // Scala list construction: Nil.::(s_valid_2)...::(s_invalid) -> List(s_invalid, s_valid_1, s_valid_2) = Enum(3)
 }
 
 /**
@@ -115,18 +115,18 @@ abstract class IssueUnit(
   // Set up the dispatch uops
   // special case "storing" 2 uops within one issue slot.
 
-  val dis_uops = Array.fill(dispatchWidth) {Wire(new MicroOp())}
+  val dis_uops = Array.fill(dispatchWidth) {Wire(new MicroOp())}                        // Array.fill(length){value}
   for (w <- 0 until dispatchWidth) {
     dis_uops(w) := io.dis_uops(w).bits
     dis_uops(w).iw_p1_poisoned := false.B
     dis_uops(w).iw_p2_poisoned := false.B
-    dis_uops(w).iw_state := s_valid_1
+    dis_uops(w).iw_state := s_valid_1                                                   // initialize dis_uops / set default state: s_valid_1
 
-    if (iqType == IQT_MEM.litValue || iqType == IQT_INT.litValue) {
+    if (iqType == IQT_MEM.litValue || iqType == IQT_INT.litValue) {                     // [Peinan?] litValue ??
       // For StoreAddrGen for Int, or AMOAddrGen, we go to addr gen state
       when ((io.dis_uops(w).bits.uopc === uopSTA && io.dis_uops(w).bits.lrs2_rtype === RT_FIX) ||
              io.dis_uops(w).bits.uopc === uopAMO_AG) {
-        dis_uops(w).iw_state := s_valid_2
+        dis_uops(w).iw_state := s_valid_2                                               // if generate address stage, lrs2_rtype === RT_FIX -> iw_state -> s_valid_2
         // For store addr gen for FP, rs2 is the FP register, and we don't wait for that here
       } .elsewhen (io.dis_uops(w).bits.uopc === uopSTA && io.dis_uops(w).bits.lrs2_rtype =/= RT_FIX) {
         dis_uops(w).lrs2_rtype := RT_X
@@ -153,7 +153,7 @@ abstract class IssueUnit(
   val slots = for (i <- 0 until numIssueSlots) yield { val slot = Module(new IssueSlot(numWakeupPorts)); slot }
   val issue_slots = VecInit(slots.map(_.io))
 
-  for (i <- 0 until numIssueSlots) {
+  for (i <- 0 until numIssueSlots) {                                                                            // connect io to each issue_slot
     issue_slots(i).wakeup_ports     := io.wakeup_ports
     issue_slots(i).pred_wakeup_port := io.pred_wakeup_port
     issue_slots(i).spec_ld_wakeup   := io.spec_ld_wakeup
@@ -162,7 +162,7 @@ abstract class IssueUnit(
     issue_slots(i).kill             := io.flush_pipeline
   }
 
-  io.event_empty := !(issue_slots.map(s => s.valid).reduce(_|_))
+  io.event_empty := !(issue_slots.map(s => s.valid).reduce(_|_))                                                // check whether is empty
 
   val count = PopCount(slots.map(_.io.valid))
   dontTouch(count)

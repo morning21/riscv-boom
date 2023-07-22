@@ -483,14 +483,14 @@ class MemAddrCalcUnit(implicit p: Parameters)
   with freechips.rocketchip.rocket.constants.ScalarOpConstants
 {
   // perform address calculation
-  val sum = (io.req.bits.rs1_data.asSInt + io.req.bits.uop.imm_packed(19,8).asSInt).asUInt
-  val ea_sign = Mux(sum(vaddrBits-1), ~sum(63,vaddrBits) === 0.U,
-                                       sum(63,vaddrBits) =/= 0.U)
+  val sum = (io.req.bits.rs1_data.asSInt + io.req.bits.uop.imm_packed(19,8).asSInt).asUInt              // base + imm(19,8)
+  val ea_sign = Mux(sum(vaddrBits-1), ~sum(63,vaddrBits) === 0.U,                                       // vaddrBits = 39
+                                       sum(63,vaddrBits) =/= 0.U)                                       // sum[38] ? ~sum[63:39]===0 : sum[63:39]=/=0
   val effective_address = Cat(ea_sign, sum(vaddrBits-1,0)).asUInt
 
   val store_data = io.req.bits.rs2_data
 
-  io.resp.bits.addr := effective_address
+  io.resp.bits.addr := effective_address                                                                // return effective addr
   io.resp.bits.data := store_data
 
   if (dataWidth > 63) {
@@ -506,11 +506,11 @@ class MemAddrCalcUnit(implicit p: Parameters)
           "[maddrcalc] assert we never get store data in here.")
 
   // Handle misaligned exceptions
-  val size = io.req.bits.uop.mem_size
+  val size = io.req.bits.uop.mem_size                                                                   // mem_size
   val misaligned =
     (size === 1.U && (effective_address(0) =/= 0.U)) ||
     (size === 2.U && (effective_address(1,0) =/= 0.U)) ||
-    (size === 3.U && (effective_address(2,0) =/= 0.U))
+    (size === 3.U && (effective_address(2,0) =/= 0.U))                                                  // ma exception
 
   val bkptu = Module(new BreakpointUnit(nBreakpoints))
   bkptu.io.status   := io.status
